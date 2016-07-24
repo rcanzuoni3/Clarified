@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -41,18 +42,20 @@ namespace Clarified
 		}
 
 		#region Hook Events
+		bool StaleScreenShot = true;
 		/// <summary>
 		/// A hook event for whenever the mouse is moved
 		/// </summary>
 		private void HookManager_MouseMove(object sender, MouseEventArgs e)
 		{
 			var screen = Screen.FromPoint(new Point { X = e.X, Y = e.Y });
-			if (this.CurrentScreen == null || !this.CurrentScreen.Equals(screen))
+			if (this.CurrentScreen == null || !this.CurrentScreen.Equals(screen) || StaleScreenShot)
 			{
 				this.CurrentScreen = screen;
 				this.ScreenOffsetX = screen.Bounds.X;
 				this.ScreenOffsetY = screen.Bounds.Y;
 				this.CurrentScreenshot = this.TakeScreenshot(screen);
+				StaleScreenShot = false;
 			}
 
 			this.CurrentX = e.X;
@@ -101,6 +104,53 @@ namespace Clarified
 			// exit the app when ESCAPE is pressed
 			if (e.KeyChar == (char)Keys.Escape)
 				this.Close();
+
+			//if (arrowKeys.Contains(e.KeyChar))
+			//{
+			//if (!(CurrentX >= this.CurrentScreen.Bounds.X && CurrentY >= this.CurrentScreen.Bounds.Y && CurrentX < this.CurrentScreen.Bounds.Right && CurrentY < this.CurrentScreen.Bounds.Bottom))
+			//return;
+
+			switch (Char.ToUpper(e.KeyChar))
+			{
+				case (char)Keys.W:
+					{
+						CurrentY -= 1;
+						break;
+					}
+				case (char)Keys.S:
+					{
+						CurrentY += 1;
+						break;
+					}
+				case (char)Keys.A:
+					{
+						CurrentX -= 1;
+						break;
+					}
+				case (char)Keys.D:
+					{
+						CurrentX += 1;
+						break;
+					}
+			}
+			// get the color under the cursor
+			var color =
+				this.GetScreenshotColorAt
+				(
+				CurrentX - this.CurrentScreen.Bounds.X,
+				CurrentY - this.CurrentScreen.Bounds.Y
+				);
+
+			// update the selected color
+			this.UpdateColor(color);
+
+			// start capturing the mouse events
+			uxViewport.Invalidate();
+			if (e.KeyChar == (char)Keys.Space)
+				this.EndColorSelection();
+
+			StaleScreenShot = true;
+			//}
 		}
 
 		/// <summary>
