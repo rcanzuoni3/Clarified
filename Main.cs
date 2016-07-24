@@ -52,20 +52,15 @@ namespace Clarified
 		{
 			var screen = Screen.FromPoint(new Point { X = e.X, Y = e.Y });
 			if (CurrentScreen == null || !CurrentScreen.Equals(screen) || StaleScreenShot)
-			{
-				CurrentScreen = screen;
-				ScreenOffsetX = screen.Bounds.X;
-				ScreenOffsetY = screen.Bounds.Y;
-				CurrentScreenshot = TakeScreenshot(screen);
-				StaleScreenShot = false;
-			}
+				InitializeCurrentScreen(screen);
 
+			StaleScreenShot = false;
 			CurrentX = e.X;
 			CurrentY = e.Y;
 
 			if (e.X >= CurrentScreen.Bounds.X && e.Y >= CurrentScreen.Bounds.Y && e.X < CurrentScreen.Bounds.Right && e.Y < CurrentScreen.Bounds.Bottom)
 			{
-				// get the color under the cursor
+				// get the color relative to the CurrentXY coordinate
 				var color = GetScreenshotColorAt(e.X - CurrentScreen.Bounds.X, e.Y - CurrentScreen.Bounds.Y);
 
 				// update the selected color
@@ -102,50 +97,39 @@ namespace Clarified
 
 			// If this line of code isn't here the user can pick multiple colors without invoking the get a color button. 
 			// This is actually a cool feature IMO but it violates the workflow of the initial project.  Remove this line
-			// for a less interrupted UX when picking colors with precision. 
+			// for a less interrupted UX when picking colors with precision. It's cool because it doesn't lock up the screen
+			// Like the mouse events do. 
 			if (uxStart.Enabled)
 				return;
 
 			var screen = Screen.FromPoint(new Point { X = Cursor.Position.X, Y = Cursor.Position.Y });
 			if (CurrentScreen == null || !CurrentScreen.Equals(screen))
 			{
-				CurrentScreen = screen;
-				ScreenOffsetX = screen.Bounds.X;
-				ScreenOffsetY = screen.Bounds.Y;
+				InitializeCurrentScreen(screen);
 				CurrentX = Cursor.Position.X;
 				CurrentY = Cursor.Position.Y;
-				CurrentScreenshot = TakeScreenshot(screen);
-				StaleScreenShot = true;
 			}
 
-			switch (Char.ToUpper(e.KeyChar))
+			switch (char.ToUpper(e.KeyChar))
 			{
 				case (char)Keys.W:
-					{
-						if (CurrentY - 1 >= CurrentScreen.Bounds.Y)
-							CurrentY -= 1;
-						break;
-					}
+					if (CurrentY - 1 >= CurrentScreen.Bounds.Y)
+						CurrentY -= 1;
+					break;
 				case (char)Keys.S:
-					{
-						if (CurrentY + 1 < CurrentScreen.Bounds.Bottom)
-							CurrentY += 1;
-						break;
-					}
+					if (CurrentY + 1 < CurrentScreen.Bounds.Bottom)
+						CurrentY += 1;
+					break;
 				case (char)Keys.A:
-					{
-						if (CurrentX - 1 >= CurrentScreen.Bounds.X)
-							CurrentX -= 1;
-						break;
-					}
+					if (CurrentX - 1 >= CurrentScreen.Bounds.X)
+						CurrentX -= 1;
+					break;
 				case (char)Keys.D:
-					{
-						if (CurrentX + 1 < CurrentScreen.Bounds.Right)
-							CurrentX += 1;
-						break;
-					}
+					if (CurrentX + 1 < CurrentScreen.Bounds.Right)
+						CurrentX += 1;
+					break;
 			}
-			// get the color under the cursor
+			// get the color relative to the CurrentXY coordinate
 			var color = GetScreenshotColorAt(CurrentX - CurrentScreen.Bounds.X, CurrentY - CurrentScreen.Bounds.Y);
 
 			// update the selected color
@@ -159,6 +143,14 @@ namespace Clarified
 			StaleScreenShot = true;
 		}
 
+
+		private void InitializeCurrentScreen(Screen screen)
+		{
+			CurrentScreen = screen;
+			ScreenOffsetX = screen.Bounds.X;
+			ScreenOffsetY = screen.Bounds.Y;
+			CurrentScreenshot = TakeScreenshot(screen);
+		}
 		/// <summary>
 		/// An event that is raised when the window needs painting
 		/// </summary>
@@ -196,18 +188,15 @@ namespace Clarified
 		/// </summary>
 		protected override void WndProc(ref Message m)
 		{
+			base.WndProc(ref m);
 			switch (m.Msg)
 			{
 				case WM_NCHITTEST:
-					base.WndProc(ref m);
-
 					if ((int)m.Result == HTCLIENT)
 						m.Result = (IntPtr)HTCAPTION;
 
-					return;
+					break;
 			}
-
-			base.WndProc(ref m);
 		}
 		#endregion
 
@@ -244,7 +233,6 @@ namespace Clarified
 		/// </summary>
 		private void uxClose_Click(object sender, EventArgs e)
 		{
-			// close the application
 			Close();
 		}
 		#endregion
@@ -331,11 +319,10 @@ namespace Clarified
 		private void colorBlock_Click(object sender, EventArgs e)
 		{
 			var panel = sender as Panel;
+
+			// update the selected color to this color palette selection
 			if (panel != null)
-			{
-				// update the selected color to this color palette selection
 				UpdateColor(panel.BackColor);
-			}
 		}
 
 		/// <summary>
@@ -344,24 +331,24 @@ namespace Clarified
 		private void colorBlock_MouseEnter(object sender, EventArgs e)
 		{
 			var panel = sender as Panel;
-			if (panel != null)
+			if (panel == null)
+				return;
+
+			var outerBorder = panel.ClientRectangle;
+			var outerBorderSize = 1;
+
+			var innerBorder = new Rectangle(outerBorder.Location, outerBorder.Size);
+			var innerBorderSize = 1;
+
+			innerBorder.Inflate(-outerBorderSize, -outerBorderSize);
+
+			using (var graphics = panel.CreateGraphics())
 			{
-				var outerBorder = panel.ClientRectangle;
-				var outerBorderSize = 1;
-
-				var innerBorder = new Rectangle(outerBorder.Location, outerBorder.Size);
-				var innerBorderSize = 1;
-
-				innerBorder.Inflate(-outerBorderSize, -outerBorderSize);
-
-				using (var graphics = panel.CreateGraphics())
-				{
-					ControlPaint.DrawBorder(graphics, innerBorder,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid);
-				}
+				ControlPaint.DrawBorder(graphics, innerBorder,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid);
 			}
 		}
 
@@ -371,11 +358,9 @@ namespace Clarified
 		private void colorBlock_MouseLeave(object sender, EventArgs e)
 		{
 			var panel = sender as Panel;
+			// force the panel to redraw so it loses the border
 			if (panel != null)
-			{
-				// force the panel to redraw so it loses the border
 				panel.Invalidate();
-			}
 		}
 		#endregion
 
@@ -386,10 +371,10 @@ namespace Clarified
 		private void uxColor_Paint(object sender, PaintEventArgs e)
 		{
 			var outerBorder = uxColor.ClientRectangle;
-			var outerBorderSize = 1;
+			const int outerBorderSize = 1;
 
 			var innerBorder = new Rectangle(outerBorder.Location, outerBorder.Size);
-			var innerBorderSize = 3;
+			const int innerBorderSize = 3;
 
 			innerBorder.Inflate(-outerBorderSize, -outerBorderSize);
 
