@@ -40,6 +40,7 @@
 			this.uxCopyHSL = new System.Windows.Forms.Label();
 			this.uxColor = new System.Windows.Forms.PictureBox();
 			this.uxViewport = new System.Windows.Forms.PictureBox();
+			this.helpLabel = new System.Windows.Forms.Label();
 			((System.ComponentModel.ISupportInitialize)(this.uxColor)).BeginInit();
 			((System.ComponentModel.ISupportInitialize)(this.uxViewport)).BeginInit();
 			this.SuspendLayout();
@@ -185,12 +186,23 @@
 			this.uxViewport.TabStop = false;
 			this.uxViewport.Paint += new System.Windows.Forms.PaintEventHandler(this.uxViewport_Paint);
 			// 
+			// helpLabel
+			// 
+			this.helpLabel.AutoSize = true;
+			this.helpLabel.Location = new System.Drawing.Point(102, 18);
+			this.helpLabel.Name = "helpLabel";
+			this.helpLabel.Size = new System.Drawing.Size(31, 13);
+			this.helpLabel.TabIndex = 26;
+			this.helpLabel.Text = "Help";
+			this.helpLabel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.helpLabel_MouseUp);
+			// 
 			// Main
 			// 
 			this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
 			this.BackColor = System.Drawing.Color.White;
 			this.ClientSize = new System.Drawing.Size(470, 344);
+			this.Controls.Add(this.helpLabel);
 			this.Controls.Add(this.uxCopyHSL);
 			this.Controls.Add(this.uxCopyRGB);
 			this.Controls.Add(this.uxCopyHEX);
@@ -212,7 +224,6 @@
 			this.TopMost = true;
 			this.Activated += new System.EventHandler(this.Main_Activated);
 			this.Deactivate += new System.EventHandler(this.Main_Deactivate);
-			this.Load += new System.EventHandler(this.Main_Load);
 			this.Paint += new System.Windows.Forms.PaintEventHandler(this.Main_Paint);
 			this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.Main_KeyPress);
 			((System.ComponentModel.ISupportInitialize)(this.uxColor)).EndInit();
@@ -236,6 +247,7 @@
 		private System.Windows.Forms.Label uxCopyHEX;
 		private System.Windows.Forms.Label uxCopyRGB;
 		private System.Windows.Forms.Label uxCopyHSL;
+		private System.Windows.Forms.Label helpLabel;
 	}
 }
 
