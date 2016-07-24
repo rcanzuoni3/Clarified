@@ -2,9 +2,9 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Text;
 using System.Windows.Forms;
 using Clarified.Win32;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Clarified
@@ -16,28 +16,32 @@ namespace Clarified
 		/// </summary>
 		public Main()
 		{
+			InitializeProgram();
+		}
+
+		private void InitializeProgram()
+		{
 			// run the automatic winforms code
 			InitializeComponent();
 
 			// establish our custom border colors
-			this.PenBorderActive = new Pen(Color.FromArgb(255, 227, 227, 227), 1);
-			this.PenBorderInactive = new Pen(Color.Transparent);
-			this.PenBorderCurrent = PenBorderActive;
+			PenBorderActive = new Pen(Color.FromArgb(255, 227, 227, 227), 1);
+			PenBorderInactive = new Pen(Color.Transparent);
+			PenBorderCurrent = PenBorderActive;
 
 			// create our pens for drawing the viewport grid
-			this.PenCrosshair = new Pen(Color.Black, 1);
-			this.PenGrid = new Pen(Color.FromArgb(50, Color.White), 1);
+			PenCrosshair = new Pen(Color.Black, 1);
+			PenGrid = new Pen(Color.FromArgb(50, Color.White), 1);
 
 			// establish the viewport defaults
-			this.ViewportWidth = uxViewport.Width;
-			this.ViewportHeight = uxViewport.Height;
-			this.HalfWidth = (ViewportWidth / 2);
-			this.HalfHeight = (ViewportHeight / 2);
-			this.ZoomLevel = 10;
-			this.ZoomWidth = ViewportWidth / ZoomLevel;
-			this.ZoomHeight = ViewportHeight / ZoomLevel;
-			this.ZoomMidPoint = ZoomLevel / 2;
-
+			ViewportWidth = uxViewport.Width;
+			ViewportHeight = uxViewport.Height;
+			HalfWidth = (ViewportWidth / 2);
+			HalfHeight = (ViewportHeight / 2);
+			ZoomLevel = 10;
+			ZoomWidth = ViewportWidth / ZoomLevel;
+			ZoomHeight = ViewportHeight / ZoomLevel;
+			ZoomMidPoint = ZoomLevel / 2;
 		}
 
 		#region Hook Events
@@ -47,24 +51,20 @@ namespace Clarified
 		private void HookManager_MouseMove(object sender, MouseEventArgs e)
 		{
 			var screen = Screen.FromPoint(new Point { X = e.X, Y = e.Y });
-			if (this.CurrentScreen == null || !this.CurrentScreen.Equals(screen))
-			{
-				this.CurrentScreen = screen;
-				this.ScreenOffsetX = screen.Bounds.X;
-				this.ScreenOffsetY = screen.Bounds.Y;
-				this.CurrentScreenshot = this.TakeScreenshot(screen);
-			}
+			if (CurrentScreen == null || !CurrentScreen.Equals(screen) || StaleScreenShot)
+				InitializeCurrentScreen(screen);
 
-			this.CurrentX = e.X;
-			this.CurrentY = e.Y;
+			StaleScreenShot = false;
+			CurrentX = e.X;
+			CurrentY = e.Y;
 
-			if (e.X >= this.CurrentScreen.Bounds.X && e.Y >= this.CurrentScreen.Bounds.Y && e.X < this.CurrentScreen.Bounds.Right && e.Y < this.CurrentScreen.Bounds.Bottom)
+			if (e.X >= CurrentScreen.Bounds.X && e.Y >= CurrentScreen.Bounds.Y && e.X < CurrentScreen.Bounds.Right && e.Y < CurrentScreen.Bounds.Bottom)
 			{
-				// get the color under the cursor
-				var color = this.GetScreenshotColorAt(e.X - this.CurrentScreen.Bounds.X, e.Y - this.CurrentScreen.Bounds.Y);
+				// get the color relative to the CurrentXY coordinate
+				var color = GetScreenshotColorAt(e.X - CurrentScreen.Bounds.X, e.Y - CurrentScreen.Bounds.Y);
 
 				// update the selected color
-				this.UpdateColor(color);
+				UpdateColor(color);
 			}
 
 			uxViewport.Invalidate();
@@ -79,40 +79,88 @@ namespace Clarified
 			((MouseEventExtArgs)e).Handled = true;
 
 			// stop listening for events
-			this.EndColorSelection();
+			EndColorSelection();
 		}
 		#endregion
 
 		#region Events for Main
 		/// <summary>
-		/// An event that is raised when the main windows loads
-		/// </summary>
-		private void Main_Load(object sender, EventArgs e)
-		{
-			// automatically start eye dropping
-			this.BeginColorSelection();
-		}
-
-		/// <summary>
 		/// An event that is raised when a key is pressed
 		/// </summary>
 		private void Main_KeyPress(object sender, KeyPressEventArgs e)
 		{
-			// exit the app when ESCAPE is pressed
+			if (char.ToUpper(e.KeyChar) == (char)Keys.Z)
+				BeginColorSelection();
+
 			if (e.KeyChar == (char)Keys.Escape)
-				this.Close();
+				Close();
+
+			// If this line of code isn't here the user can pick multiple colors without invoking the get a color button. 
+			// This is actually a cool feature IMO but it violates the workflow of the initial project.  Remove this line
+			// for a less interrupted UX when picking colors with precision. It's cool because it doesn't lock up the screen
+			// Like the mouse events do. 
+			if (uxStart.Enabled)
+				return;
+
+			var screen = Screen.FromPoint(new Point { X = Cursor.Position.X, Y = Cursor.Position.Y });
+			if (CurrentScreen == null || !CurrentScreen.Equals(screen))
+			{
+				InitializeCurrentScreen(screen);
+				CurrentX = Cursor.Position.X;
+				CurrentY = Cursor.Position.Y;
+			}
+
+			switch (char.ToUpper(e.KeyChar))
+			{
+				case (char)Keys.W:
+					if (CurrentY - 1 >= CurrentScreen.Bounds.Y)
+						CurrentY -= 1;
+					break;
+				case (char)Keys.S:
+					if (CurrentY + 1 < CurrentScreen.Bounds.Bottom)
+						CurrentY += 1;
+					break;
+				case (char)Keys.A:
+					if (CurrentX - 1 >= CurrentScreen.Bounds.X)
+						CurrentX -= 1;
+					break;
+				case (char)Keys.D:
+					if (CurrentX + 1 < CurrentScreen.Bounds.Right)
+						CurrentX += 1;
+					break;
+			}
+			// get the color relative to the CurrentXY coordinate
+			var color = GetScreenshotColorAt(CurrentX - CurrentScreen.Bounds.X, CurrentY - CurrentScreen.Bounds.Y);
+
+			// update the selected color
+			UpdateColor(color);
+
+			// start capturing the mouse events
+			uxViewport.Invalidate();
+			if (e.KeyChar == (char)Keys.Space)
+				EndColorSelection();
+
+			StaleScreenShot = true;
 		}
 
+
+		private void InitializeCurrentScreen(Screen screen)
+		{
+			CurrentScreen = screen;
+			ScreenOffsetX = screen.Bounds.X;
+			ScreenOffsetY = screen.Bounds.Y;
+			CurrentScreenshot = TakeScreenshot(screen);
+		}
 		/// <summary>
 		/// An event that is raised when the window needs painting
 		/// </summary>
 		private void Main_Paint(object sender, PaintEventArgs e)
 		{
 			// draw a custom border around the window
-			e.Graphics.DrawLine(this.PenBorderCurrent, 0, 0, 0, this.Height - 1);
-			e.Graphics.DrawLine(this.PenBorderCurrent, 0, 0, this.Width - 1, 0);
-			e.Graphics.DrawLine(this.PenBorderCurrent, this.Width - 1, 0, this.Width - 1, this.Height - 1);
-			e.Graphics.DrawLine(this.PenBorderCurrent, 0, this.Height - 1, this.Width - 1, this.Height - 1);
+			e.Graphics.DrawLine(PenBorderCurrent, 0, 0, 0, Height - 1);
+			e.Graphics.DrawLine(PenBorderCurrent, 0, 0, Width - 1, 0);
+			e.Graphics.DrawLine(PenBorderCurrent, Width - 1, 0, Width - 1, Height - 1);
+			e.Graphics.DrawLine(PenBorderCurrent, 0, Height - 1, Width - 1, Height - 1);
 		}
 
 		/// <summary>
@@ -121,8 +169,8 @@ namespace Clarified
 		private void Main_Activated(object sender, EventArgs e)
 		{
 			// set the active border
-			this.PenBorderCurrent = this.PenBorderActive;
-			this.Invalidate();
+			PenBorderCurrent = PenBorderActive;
+			Invalidate();
 		}
 
 		/// <summary>
@@ -131,8 +179,8 @@ namespace Clarified
 		private void Main_Deactivate(object sender, EventArgs e)
 		{
 			// set the inactive border
-			this.PenBorderCurrent = this.PenBorderInactive;
-			this.Invalidate();
+			PenBorderCurrent = PenBorderInactive;
+			Invalidate();
 		}
 
 		/// <summary>
@@ -140,18 +188,15 @@ namespace Clarified
 		/// </summary>
 		protected override void WndProc(ref Message m)
 		{
+			base.WndProc(ref m);
 			switch (m.Msg)
 			{
 				case WM_NCHITTEST:
-					base.WndProc(ref m);
-
 					if ((int)m.Result == HTCLIENT)
 						m.Result = (IntPtr)HTCAPTION;
 
-					return;
+					break;
 			}
-
-			base.WndProc(ref m);
 		}
 		#endregion
 
@@ -180,7 +225,7 @@ namespace Clarified
 		private void uxClose_Paint(object sender, PaintEventArgs e)
 		{
 			// paint the cross icon onto the label
-			e.Graphics.DrawImage(Clarified.Properties.Resources.Cross, new Rectangle(11, 11, 10, 10));
+			e.Graphics.DrawImage(Properties.Resources.Cross, new Rectangle(11, 11, 10, 10));
 		}
 
 		/// <summary>
@@ -188,8 +233,7 @@ namespace Clarified
 		/// </summary>
 		private void uxClose_Click(object sender, EventArgs e)
 		{
-			// close the application
-			this.Close();
+			Close();
 		}
 		#endregion
 
@@ -199,7 +243,7 @@ namespace Clarified
 		/// </summary>
 		private void uxViewport_Paint(object sender, PaintEventArgs e)
 		{
-			if (this.CurrentScreenshot != null)
+			if (CurrentScreenshot != null)
 			{
 				// get the screenshot offsets based on the cursor position
 				var x = CurrentX - ScreenOffsetX - (ZoomWidth / 2);
@@ -211,9 +255,9 @@ namespace Clarified
 				var square = new Rectangle(HalfWidth - ZoomMidPoint, HalfHeight - ZoomMidPoint, ZoomLevel, ZoomLevel);
 
 				// draw the screenshot at an offset based on the current cursor position
-				e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+				e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
 				e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
-				e.Graphics.DrawImage(this.CurrentScreenshot, viewport, screenshot, GraphicsUnit.Pixel);
+				e.Graphics.DrawImage(CurrentScreenshot, viewport, screenshot, GraphicsUnit.Pixel);
 
 				// draw the pixel viewer at the center of the crosshair
 				e.Graphics.DrawRectangle(PenCrosshair, square);
@@ -243,10 +287,10 @@ namespace Clarified
 			}
 
 			// draw a custom border around the window
-			e.Graphics.DrawLine(this.PenBorderActive, 1, 1, 1, uxViewport.Height);
-			e.Graphics.DrawLine(this.PenBorderActive, 1, 1, uxViewport.Width, 1);
-			e.Graphics.DrawLine(this.PenBorderActive, uxViewport.Width, 0, uxViewport.Width, uxViewport.Height);
-			e.Graphics.DrawLine(this.PenBorderActive, 0, uxViewport.Height, uxViewport.Width, uxViewport.Height);
+			e.Graphics.DrawLine(PenBorderActive, 1, 1, 1, uxViewport.Height);
+			e.Graphics.DrawLine(PenBorderActive, 1, 1, uxViewport.Width, 1);
+			e.Graphics.DrawLine(PenBorderActive, uxViewport.Width, 0, uxViewport.Width, uxViewport.Height);
+			e.Graphics.DrawLine(PenBorderActive, 0, uxViewport.Height, uxViewport.Width, uxViewport.Height);
 		}
 		#endregion
 
@@ -259,11 +303,11 @@ namespace Clarified
 			if (uxStart.Enabled)
 			{
 				// reset the screen
-				this.CurrentScreen = null;
-				this.CurrentScreenshot = null;
+				CurrentScreen = null;
+				CurrentScreenshot = null;
 
 				// start capturing the mouse events
-				this.BeginColorSelection();
+				BeginColorSelection();
 			}
 		}
 		#endregion
@@ -275,11 +319,10 @@ namespace Clarified
 		private void colorBlock_Click(object sender, EventArgs e)
 		{
 			var panel = sender as Panel;
+
+			// update the selected color to this color palette selection
 			if (panel != null)
-			{
-				// update the selected color to this color palette selection
-				this.UpdateColor(panel.BackColor);
-			}
+				UpdateColor(panel.BackColor);
 		}
 
 		/// <summary>
@@ -288,24 +331,24 @@ namespace Clarified
 		private void colorBlock_MouseEnter(object sender, EventArgs e)
 		{
 			var panel = sender as Panel;
-			if (panel != null)
+			if (panel == null)
+				return;
+
+			var outerBorder = panel.ClientRectangle;
+			var outerBorderSize = 1;
+
+			var innerBorder = new Rectangle(outerBorder.Location, outerBorder.Size);
+			var innerBorderSize = 1;
+
+			innerBorder.Inflate(-outerBorderSize, -outerBorderSize);
+
+			using (var graphics = panel.CreateGraphics())
 			{
-				var outerBorder = panel.ClientRectangle;
-				var outerBorderSize = 1;
-
-				var innerBorder = new Rectangle(outerBorder.Location, outerBorder.Size);
-				var innerBorderSize = 1;
-
-				innerBorder.Inflate(-outerBorderSize, -outerBorderSize);
-
-				using (var graphics = panel.CreateGraphics())
-				{
-					ControlPaint.DrawBorder(graphics, innerBorder,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
-						Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid);
-				}
+				ControlPaint.DrawBorder(graphics, innerBorder,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid,
+					Color.FromArgb(255, 0, 125, 197), innerBorderSize, ButtonBorderStyle.Solid);
 			}
 		}
 
@@ -315,11 +358,9 @@ namespace Clarified
 		private void colorBlock_MouseLeave(object sender, EventArgs e)
 		{
 			var panel = sender as Panel;
+			// force the panel to redraw so it loses the border
 			if (panel != null)
-			{
-				// force the panel to redraw so it loses the border
 				panel.Invalidate();
-			}
 		}
 		#endregion
 
@@ -330,10 +371,10 @@ namespace Clarified
 		private void uxColor_Paint(object sender, PaintEventArgs e)
 		{
 			var outerBorder = uxColor.ClientRectangle;
-			var outerBorderSize = 1;
+			const int outerBorderSize = 1;
 
 			var innerBorder = new Rectangle(outerBorder.Location, outerBorder.Size);
-			var innerBorderSize = 3;
+			const int innerBorderSize = 3;
 
 			innerBorder.Inflate(-outerBorderSize, -outerBorderSize);
 
@@ -344,10 +385,10 @@ namespace Clarified
 				uxColor.BackColor, outerBorderSize, ButtonBorderStyle.Solid);
 
 			ControlPaint.DrawBorder(e.Graphics, innerBorder,
-				this.BackColor, innerBorderSize, ButtonBorderStyle.Solid,
-				this.BackColor, innerBorderSize, ButtonBorderStyle.Solid,
-				this.BackColor, innerBorderSize, ButtonBorderStyle.Solid,
-				this.BackColor, innerBorderSize, ButtonBorderStyle.Solid);
+				BackColor, innerBorderSize, ButtonBorderStyle.Solid,
+				BackColor, innerBorderSize, ButtonBorderStyle.Solid,
+				BackColor, innerBorderSize, ButtonBorderStyle.Solid,
+				BackColor, innerBorderSize, ButtonBorderStyle.Solid);
 		}
 		#endregion
 
@@ -360,7 +401,7 @@ namespace Clarified
 			Clipboard.SetText(uxRgbHex.Text);
 			uxCopyHEX.Text = "copied!";
 
-			ResetCopyLabel((Label)sender);
+			ResetCopyLabelAsync((Label)sender, DEFAULT_LABEL_RESET_TIME);
 		}
 
 		/// <summary>
@@ -371,7 +412,7 @@ namespace Clarified
 			Clipboard.SetText(uxRgb.Text);
 			uxCopyRGB.Text = "copied!";
 
-			ResetCopyLabel((Label)sender);
+			ResetCopyLabelAsync((Label)sender, DEFAULT_LABEL_RESET_TIME);
 		}
 
 		/// <summary>
@@ -382,7 +423,7 @@ namespace Clarified
 			Clipboard.SetText(uxHsl.Text);
 			uxCopyHSL.Text = "copied!";
 
-			ResetCopyLabel((Label)sender);
+			ResetCopyLabelAsync((Label)sender, DEFAULT_LABEL_RESET_TIME);
 		}
 		#endregion
 
@@ -410,7 +451,7 @@ namespace Clarified
 			HookManager.MouseClick -= HookManager_MouseClick;
 
 			// add the selected color to the palette
-			this.AddColorToPalette(uxColor.BackColor);
+			AddColorToPalette(uxColor.BackColor);
 
 			// allow the user to start another color selection
 			uxStart.Enabled = true;
@@ -428,7 +469,7 @@ namespace Clarified
 			var offsetY = 0;
 
 			// create a new color block
-			var colorBlock = new Panel() { Height = paletteSize, Width = paletteSize, BackColor = color, Cursor = Cursors.Hand };
+			var colorBlock = new Panel { Height = paletteSize, Width = paletteSize, BackColor = color, Cursor = Cursors.Hand };
 
 			// wire up the click event to change the selected color
 			colorBlock.Click += colorBlock_Click;
@@ -510,11 +551,29 @@ namespace Clarified
 		/// <summary>
 		/// An async function to delay the resetting of the copy link text
 		/// </summary>
-		private async void ResetCopyLabel(Label label)
+		private async void ResetCopyLabelAsync(Label label, int resetTimeInMilliSeconds)
 		{
+			if (label == null)
+				throw new ArgumentNullException("label");
+
 			// wait 2 seconds before setting it back
-			await Task.Delay(2000);
+			await Task.Delay(resetTimeInMilliSeconds);
 			label.Text = "copy";
+		}
+
+		private void helpLabel_MouseUp(object sender, MouseEventArgs e)
+		{
+			StringBuilder sb = new StringBuilder();
+			sb.AppendLine("To start click on the get a color button. You can move the mouse around the screen and click on a color of your choosing.");
+			sb.AppendLine();
+			sb.AppendLine("Precision controls: ");
+			sb.AppendLine("W - move up");
+			sb.AppendLine("S - move down");
+			sb.AppendLine("A - move left");
+			sb.AppendLine("D - move right");
+			sb.AppendLine("Space bar - adds current color to color palette");
+			sb.AppendLine("Z - hotkey for the  \"Get a color\" button");
+			MessageBox.Show(sb.ToString(), "Help menu");
 		}
 		#endregion
 
@@ -522,6 +581,7 @@ namespace Clarified
 		private const int WM_NCHITTEST = 0x84;
 		private const int HTCLIENT = 0x1;
 		private const int HTCAPTION = 0x2;
+		private const int DEFAULT_LABEL_RESET_TIME = 2000;
 
 		private Pen PenBorderActive { get; set; }
 		private Pen PenBorderInactive { get; set; }
@@ -543,6 +603,8 @@ namespace Clarified
 		private int ViewportHeight { get; set; }
 		private int ZoomWidth { get; set; }
 		private int ZoomHeight { get; set; }
+
+		private bool StaleScreenShot = true;
 		#endregion
 	}
 }
